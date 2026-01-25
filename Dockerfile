@@ -124,6 +124,7 @@ FROM python:3.11-slim AS cpu-base
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -174,7 +175,8 @@ RUN pip install --no-cache-dir -e .
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser \
-    && chown -R appuser:appuser /app
+    && mkdir -p /tmp/numba_cache \
+    && chown -R appuser:appuser /app /tmp/numba_cache
 USER appuser
 
 # Environment variables
@@ -187,5 +189,7 @@ EXPOSE 8880
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8880/health || exit 1
+
+CMD ["python", "-m", "api.main"]
 
 CMD ["python", "-m", "api.main"]
