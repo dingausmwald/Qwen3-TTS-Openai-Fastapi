@@ -5,6 +5,6 @@ Backend implementations for Qwen3-TTS.
 """
 
 from .base import TTSBackend
-from .factory import get_backend
+from .factory import get_backend, initialize_backend
 
-__all__ = ["TTSBackend", "get_backend"]
+__all__ = ["TTSBackend", "get_backend", "initialize_backend"]

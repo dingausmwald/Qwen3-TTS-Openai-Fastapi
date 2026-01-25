@@ -17,6 +17,8 @@ services:
       - CORS_ORIGINS=*
       - TTS_BACKEND=official
       - TTS_WARMUP_ON_START=false
+      - CUDA_VISIBLE_DEVICES=2
+      - LD_LIBRARY_PATH=/usr/local/cuda-12.1/targets/x86_64-linux/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
     volumes:
       # Mount model cache for persistence
       - ~/.cache/huggingface:/home/appuser/.cache/huggingface
@@ -25,7 +27,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              device_ids: ['2']
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:

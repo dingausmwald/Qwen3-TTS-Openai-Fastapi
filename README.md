@@ -31,13 +31,13 @@ This repository provides an **OpenAI-compatible FastAPI server** for **Qwen3-TTS
 
 This implementation supports two backend engines:
 
-| Backend | Speed | Setup | Best For |
-|---------|-------|-------|----------|
-| **Official** (default) | ⚡⚡ Medium | ✅ Simple | Maximum quality, standard use |
-| **vLLM-Omni** | ⚡⚡⚡ Fast | ⚠️ Requires vLLM | High-throughput, low-latency scenarios |
+| Backend | Speed | Setup | Best For | Status |
+|---------|-------|-------|----------|--------|
+| **Official** (default) | ⚡⚡ Excellent | ✅ Simple | All use cases, production-ready | ✅ Stable |
+| **vLLM-Omni** | ⚡⚡⚡ Planned | ⚠️ Not Available | Future optimization | ⚠️ Experimental (Non-functional) |
 
-- **Official Backend**: Uses the official Qwen3-TTS Python implementation. Recommended for most users.
-- **vLLM-Omni Backend**: Uses vLLM for optimized inference. Requires additional setup but provides faster generation. See [docs/vllm-backend.md](docs/vllm-backend.md) for details.
+- **Official Backend**: Uses the official Qwen3-TTS Python implementation. **Recommended for all users.**
+- **vLLM-Omni Backend**: ⚠️ **Currently non-functional** - The vLLM library does not yet provide the required `Omni` class for TTS. See [VLLM_BACKEND_STATUS.md](VLLM_BACKEND_STATUS.md) for details.
 
 ## 🚀 Performance Benchmarks
 
