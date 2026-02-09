@@ -16,6 +16,9 @@
 > **⚡ NEW: Production-Optimized Inference**  
 > This implementation includes **5 advanced GPU optimizations** (Flash Attention 2, torch.compile, TF32, cuDNN benchmark, BFloat16) for **up to 40% faster inference** compared to baseline. Expected RTF: **0.65-0.70** on RTX 3090 (54% faster than real-time). See [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md) for details.
 
+> **🎯 NEW: Real-Time Streaming TTS**  
+> Now supports **low-latency streaming generation** with first audio chunk in ~1-3 seconds (vs 10+ seconds for standard generation). Enable torch.compile and CUDA graph optimizations for up to 4x speedup. See the [Streaming Generation](#-streaming-generation) section below for details.
+
 This repository provides an **OpenAI-compatible FastAPI server** for **Qwen3-TTS**, enabling drop-in replacement for OpenAI's TTS API endpoints. Built on top of the powerful Qwen3-TTS model series developed by the Qwen team at Alibaba Cloud, it offers comprehensive support for voice clone, voice design, ultra-high-quality human-like speech generation, and natural language-based voice control.
 
 ## ✨ Features
@@ -102,6 +105,119 @@ The official backend includes several production-ready optimizations for maximum
 ⚠️ **Note**: torch.compile() and cuDNN benchmarking require warmup. First 2-3 requests may be slower (~10-30s) while optimizations initialize.
 
 📖 **See [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)** for detailed information about each optimization, how to enable/disable them, and troubleshooting tips.
+
+## 🎯 Streaming Generation
+
+Real-time streaming TTS generation allows you to receive audio chunks as they are generated, significantly reducing latency for interactive applications.
+
+### Key Features
+
+- **Low Latency**: First audio chunk in ~1-3 seconds (vs 10+ seconds for standard generation)
+- **Configurable Chunking**: Control chunk size with `emit_every_frames` parameter
+- **Performance Optimizations**: torch.compile and CUDA graph support for up to 4x speedup
+- **Voice Cloning**: Full support for voice cloning in streaming mode
+
+### Basic Usage (Python Package)
+
+```python
+from qwen_tts import Qwen3TTSModel
+import torch
+
+# Load model
+model = Qwen3TTSModel.from_pretrained(
+    "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    device_map="cuda:0",
+    dtype=torch.bfloat16,
+)
+
+# Create voice clone prompt
+voice_prompt = model.create_voice_clone_prompt(
+    ref_audio="reference.wav",
+    ref_text="Reference text transcript"
+)
+
+# Stream generation
+for chunk, sample_rate in model.stream_generate_voice_clone(
+    text="Hello! This is streaming TTS generation.",
+    voice_clone_prompt=voice_prompt,
+    emit_every_frames=8,      # Emit every 8 codec frames
+    decode_window_frames=80,  # Decode window size
+):
+    # Process each audio chunk as it arrives
+    # chunk is a numpy array of PCM audio samples (float32)
+    play_audio(chunk, sample_rate)
+```
+
+### With Performance Optimizations
+
+Enable torch.compile and CUDA graphs for maximum performance:
+
+```python
+# Enable streaming optimizations (call once after loading model)
+model.enable_streaming_optimizations(
+    decode_window_frames=80,    # Must match streaming parameter
+    use_compile=True,           # Enable torch.compile
+    use_cuda_graphs=True,       # Enable CUDA graphs
+    compile_mode="reduce-overhead",  # Recommended for streaming
+)
+
+# Now streaming will be significantly faster
+for chunk, sample_rate in model.stream_generate_voice_clone(
+    text="Hello! This is optimized streaming.",
+    voice_clone_prompt=voice_prompt,
+    decode_window_frames=80,  # Must match optimization
+):
+    play_audio(chunk, sample_rate)
+```
+
+### Streaming Parameters
+
+- `emit_every_frames` (default: 8): How often to emit audio chunks. Lower = more frequent but smaller chunks
+- `decode_window_frames` (default: 80): Size of decode window. Larger = better quality, more latency
+- `overlap_samples` (default: 0): Crossfade overlap between chunks for smoother transitions
+- `use_optimized_decode` (default: True): Use CUDA graph optimizations if available
+
+### ⚠️ Breaking Change: `non_streaming_mode` Default
+
+**As of PR #14**, the default value of `non_streaming_mode` has changed from `True` to `False` in the following methods:
+
+- `generate_voice_clone()`
+- `generate_voice_design()`
+- `generate_custom_voice()`
+
+**What this means:**
+- **New default behavior**: Methods now use streaming text input mode by default (more efficient)
+- **Old behavior**: Previously used non-streaming text mode by default
+
+**Migration guide:**
+
+If you need the old behavior (non-streaming text mode), explicitly set `non_streaming_mode=True`:
+
+```python
+# Old code (implicit default was True)
+audio, sr = model.generate_voice_clone(
+    text="Hello world",
+    voice_clone_prompt=prompt
+)
+
+# New code - if you need the old behavior
+audio, sr = model.generate_voice_clone(
+    text="Hello world",
+    voice_clone_prompt=prompt,
+    non_streaming_mode=True  # Explicitly set to restore old behavior
+)
+
+# New code - using new default (recommended)
+audio, sr = model.generate_voice_clone(
+    text="Hello world",
+    voice_clone_prompt=prompt
+    # non_streaming_mode defaults to False (streaming text mode)
+)
+```
+
+**Note**: This parameter controls the **text input mode**, not whether audio streaming is enabled. For audio streaming, use `stream_generate_voice_clone()` instead of `generate_voice_clone()`.
+
+For more details, see the [examples/test_streaming.py](examples/test_streaming.py) and [examples/test_streaming_optimized.py](examples/test_streaming_optimized.py) files.
 
 ## 🚀 Quick Start (API Server)
 
