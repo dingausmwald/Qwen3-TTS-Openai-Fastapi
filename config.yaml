@@ -1,0 +1,61 @@
+# Qwen3-TTS Server Configuration
+#
+# Models are loaded from HuggingFace by default. For faster startup,
+# download models locally and point hf_id to the local path.
+
+default_model: 0.6B-CustomVoice
+
+models:
+  0.6B-CustomVoice:
+    hf_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+    type: customvoice
+  0.6B-Base:
+    hf_id: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+    type: base
+  1.7B-CustomVoice:
+    hf_id: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+    type: customvoice
+  1.7B-Base:
+    hf_id: Qwen/Qwen3-TTS-12Hz-1.7B-Base
+    type: base
+
+optimization:
+  attention: flash_attention_2
+  use_compile: true
+  compile_mode: max-autotune
+  use_cuda_graphs: true
+  use_fast_codebook: true
+  compile_codebook_predictor: true
+  streaming:
+    # Redundancy ratio (decode_window / emit_every) should be ~3x.
+    # Smaller windows = lower TTFB at the same ratio.
+    #
+    # AMD ROCm note: values <=64 and exactly 80 are broken due to a
+    # CUDA graph capture bug in ROCm. Use 72 on AMD.
+    # NVIDIA: 64 or 80 should also work fine.
+    decode_window_frames: 72
+    emit_every_frames: 24
+
+server:
+  host: 0.0.0.0
+  port: 8880
+
+voices:
+  - name: Vivian
+    language: Chinese
+  - name: Serena
+    language: Chinese
+  - name: Uncle_Fu
+    language: Chinese
+  - name: Dylan
+    language: Chinese
+  - name: Eric
+    language: Chinese
+  - name: Ryan
+    language: English
+  - name: Aiden
+    language: Japanese
+  - name: Ono_Anna
+    language: Korean
+  - name: Sohee
+    language: English

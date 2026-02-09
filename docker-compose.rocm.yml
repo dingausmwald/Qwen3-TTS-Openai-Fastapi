@@ -1,24 +1,27 @@
-# Qwen3-TTS — NVIDIA CUDA
+# Qwen3-TTS — AMD ROCm
 #
-# Usage: docker compose up -d
+# Usage: docker compose -f docker-compose.rocm.yml up -d
 # Models are downloaded automatically on first start (~2.4 GB per model).
 # First startup takes ~75s for torch.compile warmup.
 
 services:
   qwen3-tts:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.rocm
     ports:
       - "8880:8880"
     volumes:
       - ./voice_library:/root/qwen3-tts/voice_library
       - models:/root/qwen3-tts/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp=unconfined
     restart: unless-stopped
 
 volumes:

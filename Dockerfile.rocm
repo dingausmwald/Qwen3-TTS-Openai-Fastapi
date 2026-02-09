@@ -1,0 +1,57 @@
+# Qwen3-TTS OpenAI-compatible Server — AMD ROCm
+#
+# Build:  docker build -f Dockerfile.rocm -t qwen3-tts-rocm .
+# Run:    docker run --device /dev/kfd --device /dev/dri \
+#           --group-add video --group-add render \
+#           --security-opt seccomp=unconfined \
+#           -p 8880:8880 -v ~/qwen3-tts:/root/qwen3-tts \
+#           qwen3-tts-rocm
+
+FROM rocm/pytorch:rocm6.3.1_ubuntu22.04_py3.12_pytorch_release_2.6.0
+
+WORKDIR /opt/qwen3-tts
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install flash attention (AMD Triton path — built from source)
+RUN cd /tmp && \
+    git clone https://github.com/Dao-AILab/flash-attention.git && \
+    cd flash-attention && \
+    FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE pip install . --no-build-isolation && \
+    cd / && rm -rf /tmp/flash-attention
+
+# Copy application code (includes qwen_tts/ with streaming patches applied)
+COPY . .
+
+# Install the package (makes qwen_tts importable)
+RUN pip install --no-cache-dir -e .
+
+# Default config location
+RUN mkdir -p /root/qwen3-tts/voice_library
+COPY config.yaml /root/qwen3-tts/config.yaml
+
+# AMD ROCm optimizations
+ENV FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE \
+    MIOPEN_FIND_MODE=FAST \
+    TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 \
+    GPU_MAX_ALLOC_PERCENT=100 \
+    GPU_MAX_HEAP_SIZE=100 \
+    GPU_MAX_HW_QUEUES=1 \
+    TTS_BACKEND=optimized \
+    HOST=0.0.0.0 \
+    PORT=8880 \
+    WORKERS=1
+
+EXPOSE 8880
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:8880/health || exit 1
+
+CMD ["python", "-m", "api.main"]

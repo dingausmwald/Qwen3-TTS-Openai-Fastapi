@@ -1,0 +1,35 @@
+## Pipecat Voice Agent Configuration
+## Edit this file and restart the container: docker restart pipecat
+
+# LLM (any OpenAI-compatible API)
+llm:
+  base_url: "http://localhost:5000/v1"
+  model: "default"
+  api_key: "not-needed"
+
+# TTS (Qwen3-TTS)
+tts:
+  base_url: "http://localhost:8880/v1"
+  voice: "alloy"                       # or "clone:MyVoice" for voice cloning
+  model: "tts-1"                       # add language suffix: tts-1-de, tts-1-ja, etc.
+  sample_rate: 24000
+  api_key: "not-needed"
+  # true = real-time streaming (low TTFB, requires stream support in server)
+  # false = non-streaming (higher TTFB, but guaranteed smooth playback)
+  streaming: true
+
+# STT (faster-whisper, local)
+stt:
+  model: "small"                       # tiny / small / medium / large-v3
+  device: "cpu"
+  language: "en"                       # or "de", "ja", "auto"
+
+# Voice Agent behavior
+agent:
+  system_prompt: >
+    You are a friendly voice assistant.
+    Keep your responses short and natural, as if in a conversation.
+    Limit answers to 2-3 sentences.
+  vad_min_volume: 0.5
+  vad_stop_secs: 0.8
+  allow_interruptions: true

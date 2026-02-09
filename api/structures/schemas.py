@@ -79,6 +79,22 @@ class OpenAISpeechRequest(BaseModel):
         default=None,
         description="Optional instruction for voice style/emotion control.",
     )
+    task_type: Optional[str] = Field(
+        default=None,
+        description="Task type: CustomVoice, VoiceDesign, or Base (for voice cloning).",
+    )
+    ref_audio: Optional[str] = Field(
+        default=None,
+        description="Base64 or data URI of reference audio for voice cloning.",
+    )
+    ref_text: Optional[str] = Field(
+        default=None,
+        description="Transcript of reference audio for ICL cloning mode.",
+    )
+    x_vector_only_mode: Optional[bool] = Field(
+        default=False,
+        description="Use x-vector only mode for voice cloning (no transcript needed).",
+    )
     normalization_options: Optional[NormalizationOptions] = Field(
         default_factory=NormalizationOptions,
         description="Options for the text normalization system",
