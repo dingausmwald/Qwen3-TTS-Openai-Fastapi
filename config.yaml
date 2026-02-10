@@ -34,7 +34,7 @@ optimization:
     # CUDA graph capture bug in ROCm. Use 72 on AMD.
     # NVIDIA: 64 or 80 should also work fine.
     decode_window_frames: 72
-    emit_every_frames: 24
+    emit_every_frames: 8
 
 server:
   host: 0.0.0.0
