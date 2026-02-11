@@ -14,9 +14,10 @@ if command -v rocminfo &>/dev/null || [ -d /opt/rocm ]; then
     export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
     export GPU_MAX_ALLOC_PERCENT=100
     export GPU_MAX_HEAP_SIZE=100
-    # Fix ROCm bug: multiple HIP streams keep GPU at max clock idle
-    # See https://github.com/ROCm/ROCm/issues/2625
+    # ROCm firmware bug: HIP streams cause false 100% GPU busy reporting
+    # See https://github.com/ROCm/ROCm/issues/5107
     export GPU_MAX_HW_QUEUES=1
+    export TORCHINDUCTOR_CUDAGRAPHS=0
 elif command -v nvidia-smi &>/dev/null; then
     echo "Detected NVIDIA CUDA GPU"
     # NVIDIA typically needs no special env vars
