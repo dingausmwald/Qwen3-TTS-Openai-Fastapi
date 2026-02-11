@@ -12,6 +12,12 @@ if command -v rocminfo &>/dev/null || [ -d /opt/rocm ]; then
     export FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
     export MIOPEN_FIND_MODE=FAST
     export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+    # hipblaslt has optimized GEMM kernels for gfx1151/gfx1101
+    # See https://github.com/ROCm/rocm-libraries/pull/3913
+    export TORCH_BLAS_PREFER_HIPBLASLT=1
+    # Auto-tune GEMM backend per shape (persists results across restarts)
+    export PYTORCH_TUNABLEOP_ENABLED=1
+    export PYTORCH_TUNABLEOP_FILENAME=$HOME/qwen3-tts/tunableop_results.csv
     export GPU_MAX_ALLOC_PERCENT=100
     export GPU_MAX_HEAP_SIZE=100
     # ROCm firmware bug: HIP streams cause false 100% GPU busy reporting

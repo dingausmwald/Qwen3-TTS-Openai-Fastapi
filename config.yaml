@@ -23,7 +23,7 @@ optimization:
   attention: flash_attention_2
   use_compile: true
   compile_mode: max-autotune
-  use_cuda_graphs: false
+  use_cuda_graphs: true
   use_fast_codebook: true
   compile_codebook_predictor: true
   streaming:

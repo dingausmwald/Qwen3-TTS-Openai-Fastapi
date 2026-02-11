@@ -45,11 +45,6 @@ class OptimizedQwen3TTSBackend:
         self.dtype = None
         self._voice_prompt_cache = {}  # cache_key -> VoiceClonePromptItem list
 
-        # Set environment variables from config
-        for key, value in self.config.get("env", {}).items():
-            os.environ[key] = str(value)
-            logger.info(f"Set {key}={value}")
-
     def _get_model_key_for_request(self, openai_model: str) -> str:
         """Map OpenAI model name to our model key."""
         if openai_model in MODEL_MAPPING:
