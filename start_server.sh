@@ -17,7 +17,6 @@ if command -v rocminfo &>/dev/null || [ -d /opt/rocm ]; then
     # ROCm firmware bug: HIP streams cause false 100% GPU busy reporting
     # See https://github.com/ROCm/ROCm/issues/5107
     export GPU_MAX_HW_QUEUES=1
-    export TORCHINDUCTOR_CUDAGRAPHS=0
 elif command -v nvidia-smi &>/dev/null; then
     echo "Detected NVIDIA CUDA GPU"
     # NVIDIA typically needs no special env vars
