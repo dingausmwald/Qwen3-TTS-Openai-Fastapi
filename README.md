@@ -134,8 +134,8 @@ Benchmarked on AMD Radeon 8060S (Strix Halo), 0.6B model, after warmup:
 |------|-----|------|-------|
 | Non-streaming, CustomVoice | 0.53-0.54x | full generation time | Best for OpenWebUI |
 | Non-streaming, Voice Clone | 0.55-0.56x | full generation time | With cached prompt |
-| Streaming, CustomVoice | 0.57x | ~1.06s | 6-8 chunks per request |
-| Streaming, Voice Clone | 0.57x | ~1.10s | With cached prompt |
+| Streaming, CustomVoice | 0.57x | ~0.3s | 6-8 chunks per request |
+| Streaming, Voice Clone | 0.57x | ~0.3s | With cached prompt |
 
 RTF = Real-Time Factor. Lower is faster. 0.54x means audio is generated ~1.85x
 faster than real-time.
