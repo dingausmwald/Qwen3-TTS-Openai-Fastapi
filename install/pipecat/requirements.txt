@@ -1,0 +1,3 @@
+pipecat-ai[whisper,openai,webrtc,runner]
+pipecat-ai-small-webrtc-prebuilt
+faster-whisper

@@ -1,0 +1,46 @@
+## Pipecat Voice Agent Configuration
+## Edit this file and restart the container: podman restart pipecat
+
+# LLM (llamaswap)
+llm:
+  base_url: "http://localhost:5000/v1"
+  model: "Ministral-3-3B-Instruct-2512 (Q8_0)"
+  api_key: "not-needed"
+
+# TTS (Qwen3-TTS)
+tts:
+  base_url: "http://localhost:8880/v1"
+  voice: "clone:friedrich2"
+  model: "tts-1-de"
+  sample_rate: 24000
+  api_key: "not-needed"
+  # true = real-time streaming (low TTFB, but may stutter at RTF ~1.0x)
+  # false = non-streaming (higher TTFB for first sentence, but smooth playback)
+  streaming: true
+  # Seconds of audio to buffer before pushing first frame (default: 0.5 = 24000 bytes)
+  # Lower = faster first audio, but more sensitive to network jitter
+  chunk_seconds: 0.1
+
+# STT (Parakeet TDT 0.6B v3, external via OpenAI API)
+stt:
+  base_url: "http://127.0.0.1:5092/v1"
+  model: "parakeet-tdt-0.6b-v3"
+  api_key: "not-needed"
+  language: "de"
+
+# Audio transport
+audio:
+  # Output sample rate — MUST match TTS sample_rate to avoid resampling overhead
+  out_sample_rate: 24000
+  # Output buffer: N × 10ms chunks (default: 4 = 40ms). Lower = less latency
+  out_10ms_chunks: 2
+
+# Voice Agent behavior
+agent:
+  system_prompt: >
+    Du bist ein freundlicher deutschsprachiger Sprachassistent.
+    Antworte kurz und natürlich, als wärst du in einem Gespräch.
+    Halte deine Antworten unter 2-3 Sätzen.
+  vad_min_volume: 0.5
+  vad_stop_secs: 0.3
+  allow_interruptions: true
