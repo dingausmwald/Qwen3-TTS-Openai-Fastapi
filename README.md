@@ -18,8 +18,11 @@ and [dffdeeq/Qwen3-TTS-streaming](https://github.com/dffdeeq/Qwen3-TTS-streaming
   reused across requests. Saves ~0.7s per voice clone request.
 - **torch.compile + CUDA graphs** — Configurable via `config.yaml`. The `optimized`
   backend compiles both streaming and non-streaming code paths on startup.
-- **Pipecat integration** — Example voice agent with WebRTC, local Whisper STT,
-  and streaming TTS (see [examples/pipecat](examples/pipecat/)).
+- **GPU keepalive** — Periodic matmul to prevent AMD DPM from downclocking the GPU
+  after idle. Keeps TTFB consistent at ~0.3s instead of 0.85s after idle.
+- **Pipecat voice agent** — Full voice assistant pipeline with WebRTC, Parakeet STT,
+  LLM, and streaming TTS. End-to-end latency ~2s (down from ~7s).
+  See [`install/pipecat/`](install/pipecat/).
 
 
 ## Compatibility
@@ -153,6 +156,34 @@ AMD ROCm note: `decode_window_frames` values of 64 or less, and exactly 80, trig
 a CUDA graph capture bug that causes 5-10x slowdown. Use 72 or 84+.
 
 
+## Voice Assistant Pipeline
+
+The [`install/pipecat/`](install/pipecat/) directory contains a complete voice
+assistant that combines STT, LLM, and TTS into a real-time WebRTC pipeline:
+
+```
+Browser (WebRTC)
+    |
+    v
+Pipecat Pipeline
+    |
+    ├── STT: Parakeet TDT 0.6B v3 (ONNX INT8, CPU, ~0.2s)
+    ├── LLM: any OpenAI-compatible API (llamaswap, vLLM, etc.)
+    └── TTS: Qwen3-TTS streaming (GPU, TTFB ~0.3s)
+```
+
+**End-to-end latency: ~2 seconds** (user stops speaking → bot starts speaking),
+down from ~7 seconds through:
+
+- Parakeet STT on CPU via [groxaxo's FastAPI wrapper](https://github.com/groxaxo/parakeet-tdt-0.6b-v3-fastapi-openai) (replaces local Whisper, 20x+ realtime)
+- Small LLM for fast TTFB (Ministral 3B Q8_0: ~0.5s TTFB)
+- Streaming TTS with GPU keepalive (consistent 0.3s TTFB)
+- SanitizedLLMService: merges consecutive user messages after voice interruptions
+  (prevents template errors with strict chat templates like Ministral)
+
+See [`install/pipecat/INSTALL.md`](install/pipecat/INSTALL.md) for setup instructions.
+
+
 ## Architecture
 
 ```
@@ -169,6 +200,7 @@ Optimized Backend (optimized_backend.py)
     |  - Model switching (CustomVoice <-> Base)
     |  - torch.compile + CUDA graphs
     |  - Voice prompt caching
+    |  - GPU keepalive (prevents idle downclocking)
     v
 dffdeeq/Qwen3-TTS-streaming
     |  - stream_generate_pcm()
@@ -191,16 +223,12 @@ api/
   structures/
     schemas.py              # Request/response schemas
   services/                 # From groxaxo: text processing, audio encoding
-qwen_tts/                   # Inference library (dffdeeq fork with patches applied)
-  inference/
-    qwen3_tts_model.py      # + stream_generate_custom_voice()
-  core/tokenizer_12hz/
-    modeling_qwen3_tts_tokenizer_v2.py  # + CUDA graph tensor fixes
-    configuration_qwen3_tts_tokenizer_v2.py
-patches/
-  dffdeeq/                  # Patch reference (for upstream dffdeeq users)
-examples/
-  pipecat/                  # WebRTC voice agent example
+install/                    # Canonical deployment files
+  INSTALL.md                # Detailed installation guide
+  config.yaml               # Server configuration reference
+  groxaxo/                  # Modified API files (optimized backend, router, etc.)
+  dffdeeq/                  # Patched fork files (CUDA graph fixes, streaming)
+  pipecat/                  # Voice agent (app, config, requirements, start script)
 config.yaml                 # Server configuration
 start_server.sh             # Auto-detects AMD/NVIDIA, sets env vars
 Dockerfile                  # NVIDIA CUDA
