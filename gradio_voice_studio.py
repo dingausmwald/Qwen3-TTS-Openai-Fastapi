@@ -23,7 +23,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -95,6 +95,10 @@ class VoiceProfile:
     x_vector_only_mode: bool = False
     ref_audio_filename: str = ""
     origin: str = ""
+    enhanced: bool = False
+    enhancer: str = ""
+    ref_text_source: str = ""
+    source_note: str = ""
 
 
 def ensure_dirs(library_dir: Path) -> Dict[str, Path]:
@@ -133,6 +137,8 @@ def load_profile(library_dir: Path, profile_id: str) -> VoiceProfile:
     """Load a profile from disk into a VoiceProfile instance."""
     p = meta_path(library_dir, profile_id)
     data = json.loads(p.read_text(encoding="utf-8"))
+    known = {f.name for f in fields(VoiceProfile)}
+    data = {k: v for k, v in data.items() if k in known}
     return VoiceProfile(**data)
 
 
@@ -477,6 +483,15 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
                                     sources=["upload", "microphone"],
                                     type="filepath",
                                 )
+                                with gr.Row():
+                                    clone_enhance_btn = gr.Button(
+                                        "Aufnahme verbessern (Sidon)", variant="secondary", size="sm")
+                                    clone_restore_btn = gr.Button(
+                                        "Original wiederherstellen", variant="secondary", size="sm")
+                                clone_ref_status = gr.Markdown("")
+                                clone_orig_path = gr.State(None)
+                                clone_is_enhanced = gr.State(False)
+                                clone_text_edited = gr.State(False)
                                 clone_xvec_only = gr.Checkbox(
                                     label="x_vector_only_mode (no transcript needed, usually lower quality)",
                                     value=False,
@@ -656,6 +671,71 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
             out_path = write_bytes_to_temp_audio(audio_bytes, ext)
             return out_path, out_path, "✅ Generated audio."
 
+        def _post_file(base_url: str, path: str, file_path: str, timeout_s: float):
+            import requests
+            with open(file_path, "rb") as fh:
+                return requests.post(
+                    normalize_base_url(base_url) + path,
+                    files={"file": (Path(file_path).name, fh, "application/octet-stream")},
+                    timeout=timeout_s,
+                )
+
+        def _transcribe(base_url: str, ref_path: str, timeout_s: float):
+            """Return (text, message). Failures are reported, never raised: a stopped
+            STT service must not block cloning, the transcript can still be typed."""
+            try:
+                r = _post_file(base_url, "/v1/audio/transcribe-reference", ref_path, timeout_s)
+            except Exception as e:
+                return "", "Transkription nicht moeglich: %s" % e
+            if r.status_code != 200:
+                return "", "Transkription fehlgeschlagen (HTTP %s)." % r.status_code
+            data = r.json()
+            if data.get("error"):
+                return "", data["error"]
+            return data.get("text", ""), ""
+
+        def on_ref_audio_uploaded(base_url_str, timeout_s, ref_path, xvec_only):
+            """Prefill the transcript. Fresh upload, so any earlier edit is void."""
+            if not ref_path:
+                return gr.update(), None, False, False, ""
+            if xvec_only:
+                return gr.update(), ref_path, False, False, "x_vector_only_mode: kein Transkript noetig."
+            text, msg = _transcribe(base_url_str, ref_path, float(timeout_s))
+            if msg:
+                return gr.update(), ref_path, False, False, "&#9888; %s" % msg
+            return (text, ref_path, False, False,
+                    "Transkript automatisch erstellt (Parakeet) - bitte pruefen und ggf. korrigieren.")
+
+        def on_enhance_ref(base_url_str, timeout_s, ref_path, orig_path, text_edited, xvec_only):
+            """Restore the reference with Sidon, re-transcribing unless edited by hand."""
+            if not ref_path:
+                return gr.update(), gr.update(), orig_path, False, text_edited, "&#9888; Erst eine Aufnahme laden."
+            keep_orig = orig_path or ref_path
+            try:
+                r = _post_file(base_url_str, "/v1/audio/enhance", ref_path, max(float(timeout_s), 300.0))
+            except Exception as e:
+                return (gr.update(), gr.update(), keep_orig, False, text_edited,
+                        "&#9888; Verbesserung nicht moeglich: %s" % e)
+            if r.status_code != 200:
+                return (gr.update(), gr.update(), keep_orig, False, text_edited,
+                        "&#9888; Verbesserung fehlgeschlagen (HTTP %s)." % r.status_code)
+
+            out = Path(tempfile.gettempdir()) / ("sidon_%s.wav" % uuid.uuid4().hex[:8])
+            out.write_bytes(r.content)
+
+            note = "Verbessert mit Sidon. Zum Vergleichen: 'Original wiederherstellen'."
+            if xvec_only or text_edited:
+                return str(out), gr.update(), keep_orig, True, text_edited, note
+            text, msg = _transcribe(base_url_str, str(out), float(timeout_s))
+            if msg:
+                return str(out), gr.update(), keep_orig, True, text_edited, note + " (%s)" % msg
+            return str(out), text, keep_orig, True, False, note + " Transkript neu erstellt."
+
+        def on_restore_ref(orig_path):
+            if not orig_path:
+                return gr.update(), False, "&#9888; Kein Original hinterlegt."
+            return orig_path, False, "Original wiederhergestellt."
+
         def on_save_clone_profile(
             library_dir_str: str,
             name: str,
@@ -663,6 +743,8 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
             ref_audio_path: str,
             ref_text: str,
             xvec_only: bool,
+            is_enhanced: bool = False,
+            text_edited: bool = True,
         ):
             if not name.strip():
                 raise gr.Error("Profile name is required.")
@@ -688,6 +770,9 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
                 ref_text=ref_text.strip(),
                 x_vector_only_mode=bool(xvec_only),
                 ref_audio_filename=ref_filename,
+                enhanced=bool(is_enhanced),
+                enhancer="sidon-v0.1" if is_enhanced else "",
+                ref_text_source="manual" if text_edited else "parakeet-tdt-0.6b-v3",
             )
             save_profile(Path(library_dir_str), vp)
             return f"✅ Saved clone profile: {pid}"
@@ -815,8 +900,32 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
         )
         clone_save_btn.click(
             fn=on_save_clone_profile,
-            inputs=[library_dir_in, clone_name, clone_language, clone_ref_audio, clone_ref_text, clone_xvec_only],
+            inputs=[library_dir_in, clone_name, clone_language, clone_ref_audio, clone_ref_text,
+                    clone_xvec_only, clone_is_enhanced, clone_text_edited],
             outputs=[global_log],
+        )
+
+        # upload/stop_recording rather than change: the enhance button swaps the
+        # audio programmatically and must not retrigger transcription
+        for _evt in (clone_ref_audio.upload, clone_ref_audio.stop_recording):
+            _evt(
+                fn=on_ref_audio_uploaded,
+                inputs=[base_url_in, timeout_in, clone_ref_audio, clone_xvec_only],
+                outputs=[clone_ref_text, clone_orig_path, clone_is_enhanced,
+                         clone_text_edited, clone_ref_status],
+            )
+        clone_ref_text.input(fn=lambda: True, inputs=None, outputs=[clone_text_edited])
+        clone_enhance_btn.click(
+            fn=on_enhance_ref,
+            inputs=[base_url_in, timeout_in, clone_ref_audio, clone_orig_path,
+                    clone_text_edited, clone_xvec_only],
+            outputs=[clone_ref_audio, clone_ref_text, clone_orig_path, clone_is_enhanced,
+                     clone_text_edited, clone_ref_status],
+        )
+        clone_restore_btn.click(
+            fn=on_restore_ref,
+            inputs=[clone_orig_path],
+            outputs=[clone_ref_audio, clone_is_enhanced, clone_ref_status],
         )
 
         library_refresh_btn.click(

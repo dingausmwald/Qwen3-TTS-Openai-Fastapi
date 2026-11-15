@@ -108,7 +108,10 @@ async def lifespan(app: FastAPI):
                 async def _gpu_keepalive():
                     while True:
                         await asyncio.sleep(GPU_KEEPALIVE_INTERVAL)
-                        torch.matmul(_ka, _ka)
+                        try:
+                            torch.matmul(_ka, _ka)
+                        except Exception as e:
+                            logger.warning(f"GPU keepalive matmul failed: {e}")
                 keepalive_task = asyncio.create_task(_gpu_keepalive())
                 logger.info(f"GPU keepalive: matmul every {GPU_KEEPALIVE_INTERVAL}s")
         except Exception as e:
@@ -170,6 +173,10 @@ app.add_middleware(
 # Include routers
 from .routers.openai_compatible import router as openai_router
 app.include_router(openai_router, prefix="/v1")
+
+# Reference preparation helpers (Sidon enhance, STT prefill) shared by both UIs
+from .routers.reference_tools import router as reference_router
+app.include_router(reference_router)
 
 # Mount static files if directory exists
 if STATIC_DIR.exists():

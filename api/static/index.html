@@ -514,6 +514,13 @@
                     <div class="audio-container" id="refAudioPreview" style="margin-top: 0;">
                         <label style="margin-bottom: 10px; display: block;">Reference Audio Preview</label>
                         <audio id="refAudioPlayer" controls style="width: 100%;"></audio>
+                        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                            <button type="button" id="enhanceRefBtn" class="btn btn-secondary"
+                                    style="flex: 1; min-width: 180px;">Aufnahme verbessern (Sidon)</button>
+                            <button type="button" id="restoreRefBtn" class="btn btn-secondary"
+                                    style="flex: 1; min-width: 180px;" disabled>Original wiederherstellen</button>
+                        </div>
+                        <small id="refPrepStatus" style="color: #666; font-size: 11px; display: block; margin-top: 8px;"></small>
                     </div>
 
                     <div class="form-group" id="refTextGroup">
@@ -832,16 +839,109 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
             }
         });
 
-        // Reference audio file preview
-        refAudioInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const url = URL.createObjectURL(file);
-                refAudioPlayer.src = url;
-                refAudioPreview.classList.add('visible');
-            } else {
-                refAudioPreview.classList.remove('visible');
+        // Reference preparation: the blob actually used for cloning. Starts as the
+        // uploaded file and is replaced by the Sidon result when enhancement is used.
+        let refOriginalBlob = null;
+        let refCurrentBlob = null;
+        let refCurrentName = 'reference.wav';
+        let refTextEdited = false;
+
+        const enhanceRefBtn = document.getElementById('enhanceRefBtn');
+        const restoreRefBtn = document.getElementById('restoreRefBtn');
+        const refPrepStatus = document.getElementById('refPrepStatus');
+        const refTextArea = document.getElementById('refText');
+
+        function setRefPrepStatus(msg, isError) {
+            refPrepStatus.textContent = msg || '';
+            refPrepStatus.style.color = isError ? '#ff6b6b' : '#666';
+        }
+
+        function showRefBlob(blob) {
+            refCurrentBlob = blob;
+            refAudioPlayer.src = URL.createObjectURL(blob);
+            refAudioPreview.classList.add('visible');
+        }
+
+        // A wrong transcript is worse than none in ICL mode, so the result is only
+        // ever offered for editing - never applied over something typed by hand.
+        async function transcribeRef(blob, name) {
+            const fd = new FormData();
+            fd.append('file', blob, name);
+            let r;
+            try {
+                r = await fetch('/v1/audio/transcribe-reference', { method: 'POST', body: fd });
+            } catch (err) {
+                return { text: '', error: 'Transkription nicht erreichbar: ' + err.message };
             }
+            if (!r.ok) return { text: '', error: 'Transkription fehlgeschlagen (HTTP ' + r.status + ')' };
+            return await r.json();
+        }
+
+        refTextArea.addEventListener('input', () => { refTextEdited = true; });
+
+        refAudioInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) {
+                refAudioPreview.classList.remove('visible');
+                refOriginalBlob = null; refCurrentBlob = null;
+                restoreRefBtn.disabled = true;
+                setRefPrepStatus('');
+                return;
+            }
+            refOriginalBlob = file;
+            refCurrentName = file.name || 'reference.wav';
+            refTextEdited = false;
+            restoreRefBtn.disabled = true;
+            showRefBlob(file);
+
+            if (cloneModeSelect.value === 'xvector') {
+                setRefPrepStatus('x_vector_only_mode: kein Transkript noetig.');
+                return;
+            }
+            setRefPrepStatus('Transkription laeuft ...');
+            const res = await transcribeRef(file, refCurrentName);
+            if (res.error) { setRefPrepStatus(res.error, true); return; }
+            refTextArea.value = res.text;
+            refTextEdited = false;
+            setRefPrepStatus('Transkript automatisch erstellt - bitte pruefen und ggf. korrigieren.');
+        });
+
+        enhanceRefBtn.addEventListener('click', async () => {
+            if (!refCurrentBlob) { setRefPrepStatus('Erst eine Aufnahme waehlen.', true); return; }
+            enhanceRefBtn.disabled = true;
+            setRefPrepStatus('Sidon verbessert die Aufnahme ...');
+            try {
+                const fd = new FormData();
+                fd.append('file', refCurrentBlob, refCurrentName);
+                const r = await fetch('/v1/audio/enhance', { method: 'POST', body: fd });
+                if (!r.ok) {
+                    setRefPrepStatus('Verbesserung fehlgeschlagen (HTTP ' + r.status + ')', true);
+                    return;
+                }
+                const blob = await r.blob();
+                showRefBlob(blob);
+                refCurrentName = 'enhanced.wav';
+                restoreRefBtn.disabled = false;
+                let note = 'Verbessert mit Sidon.';
+                if (cloneModeSelect.value !== 'xvector' && !refTextEdited) {
+                    const res = await transcribeRef(blob, refCurrentName);
+                    if (res.error) { note += ' ' + res.error; }
+                    else { refTextArea.value = res.text; refTextEdited = false; note += ' Transkript neu erstellt.'; }
+                }
+                setRefPrepStatus(note);
+            } catch (err) {
+                setRefPrepStatus('Verbesserung nicht moeglich: ' + err.message, true);
+            } finally {
+                enhanceRefBtn.disabled = false;
+            }
+        });
+
+        restoreRefBtn.addEventListener('click', () => {
+            if (!refOriginalBlob) return;
+            showRefBlob(refOriginalBlob);
+            refCurrentName = refOriginalBlob.name || 'reference.wav';
+            restoreRefBtn.disabled = true;
+            setRefPrepStatus('Original wiederhergestellt.');
         });
 
         // Convert file to base64
@@ -862,7 +962,7 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
         voiceCloneForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const refFile = refAudioInput.files[0];
+            const refFile = refCurrentBlob || refAudioInput.files[0];
             if (!refFile) {
                 showCloneStatus('Please select a reference audio file', 'error');
                 return;

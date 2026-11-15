@@ -14,14 +14,14 @@ models:
     type: customvoice
 optimization:
   attention: flash_attention_2
+  compile_codebook_predictor: true
   compile_mode: max-autotune
+  streaming:
+    decode_window_frames: 72
+    emit_every_frames: 8
   use_compile: true
   use_cuda_graphs: true
   use_fast_codebook: true
-  streaming:
-    decode_window_frames: 72
-    emit_every_frames: 6
-  compile_codebook_predictor: true
 server:
   host: 0.0.0.0
   port: 8880
