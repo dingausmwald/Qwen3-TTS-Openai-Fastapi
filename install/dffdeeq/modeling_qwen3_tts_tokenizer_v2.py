@@ -198,12 +198,13 @@ class Qwen3TTSTokenizerV2CausalTransConvNet(nn.Module):
         self.conv = nn.ConvTranspose1d(in_channels, out_channels, kernel_size, stride=stride)
 
         pad = kernel_size - stride
-        self.left_pad = math.ceil(pad)
-        self.right_pad = pad = self.left_pad
+        self.left_pad = 0
+        self.right_pad = int(pad)
 
     def forward(self, hidden_state):
         hidden_state = self.conv(hidden_state)
-        hidden_state = hidden_state[..., self.left_pad : hidden_state.shape[-1] - self.right_pad]
+        if self.right_pad > 0:
+            hidden_state = hidden_state[..., : hidden_state.shape[-1] - self.right_pad]
         return hidden_state.contiguous()
 
 
@@ -1042,6 +1043,40 @@ class Qwen3TTSTokenizerV2Decoder(Qwen3TTSTokenizerV2DecoderPreTrainedModel):
         # Fallback to regular forward
         return self._forward_impl(codes)
 
+    _SILENCE_CODES_FILE = "silence_codes_12hz.pt"
+
+    def _load_silence_codes(self, Q, device):
+        # Left padding must be real codec silence. Code 0 is a regular codebook entry,
+        # not silence, and audibly distorts the start of the decoded audio.
+        # There is deliberately no fallback to zeros.
+        import os
+        path = os.environ.get("QWEN3_TTS_SILENCE_CODES") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), self._SILENCE_CODES_FILE
+        )
+        if not os.path.isfile(path):
+            raise FileNotFoundError(
+                f"Silence codes for decode padding not found: {path}. "
+                "Set QWEN3_TTS_SILENCE_CODES or place silence_codes_12hz.pt next to this module. "
+                "Padding with code 0 distorts the audio start, so there is no fallback."
+            )
+        s = torch.load(path, map_location="cpu")  # [T, Q]: codec encoding of digital silence
+        if s.dim() != 2 or s.shape[1] != Q or s.shape[0] < 11:
+            raise ValueError(
+                f"Silence codes in {path} have shape {tuple(s.shape)}, expected [T>=11, {Q}]"
+            )
+        sil = s[5:-5].t().contiguous().to(device=device)  # [Q, T], steady-state silence
+        logger.info(f"Decode padding uses codec silence from {path} ({sil.shape[-1]} frames)")
+        return sil
+
+    def _silence_pad(self, B, Q, n, dtype, device):
+        sil = getattr(self, "_silence_codes", None)
+        if sil is None or sil.device != device or sil.shape[0] != Q:
+            sil = self._load_silence_codes(Q, device)
+            self._silence_codes = sil
+        reps = (n + sil.shape[-1] - 1) // sil.shape[-1]
+        pad = sil.repeat(1, reps)[:, -n:]
+        return pad.to(dtype).unsqueeze(0).expand(B, Q, n)
+
     def decode_padded(self, codes: torch.Tensor, target_length: int) -> torch.Tensor:
         """
         Decode with left-padding to fixed size for torch.compile optimization.
@@ -1060,8 +1095,8 @@ class Qwen3TTSTokenizerV2Decoder(Qwen3TTSTokenizerV2DecoderPreTrainedModel):
         B, Q, T = codes.shape
 
         if T < target_length:
-            # Pad with zeros on the left
-            pad = torch.zeros(B, Q, target_length - T, dtype=codes.dtype, device=codes.device)
+            # Pad on the left with real codec silence (code 0 is not silence)
+            pad = self._silence_pad(B, Q, target_length - T, codes.dtype, codes.device)
             codes_padded = torch.cat([pad, codes], dim=-1)
         else:
             codes_padded = codes.contiguous()  # Ensure uniform tensor format to avoid recompilation
@@ -1194,9 +1229,10 @@ class Qwen3TTSTokenizerV2Model(Qwen3TTSTokenizerV2PreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.return_dict
 
-        audio_values = self.decoder.chunked_decode(audio_codes.transpose(1, 2)).squeeze(1)
+        audio_lengths = (audio_codes[..., 0] > -1).sum(1) * self.decode_upsample_rate
 
-        audio_lengths = (audio_codes[..., 0] > 0).sum(1) * self.decode_upsample_rate
+        audio_codes = torch.clamp(audio_codes, min=0)
+        audio_values = self.decoder.chunked_decode(audio_codes.transpose(1, 2)).squeeze(1)
         audio_values = [a[:l] for a, l in zip(audio_values, audio_lengths)]
 
         if not return_dict:

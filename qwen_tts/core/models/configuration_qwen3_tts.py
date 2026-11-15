@@ -17,6 +17,7 @@ from transformers.modeling_rope_utils import rope_config_validation
 from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
+_defaults_logged = set()
 
 
 class Qwen3TTSSpeakerEncoderConfig(PretrainedConfig):
@@ -432,7 +433,9 @@ class Qwen3TTSTalkerConfig(PretrainedConfig):
         if code_predictor_config is None:
             code_predictor_config = {}
             self.code_predictor_config = Qwen3TTSTalkerCodePredictorConfig()
-            logger.info("code_predictor_config is None. Initializing code_predictor model with default values")
+            if "code_predictor_config" not in _defaults_logged:
+                logger.info("code_predictor_config is None. Initializing code_predictor model with default values")
+                _defaults_logged.add("code_predictor_config")
         elif isinstance(code_predictor_config, Qwen3TTSTalkerCodePredictorConfig):
             self.code_predictor_config = code_predictor_config
         else:
@@ -480,10 +483,14 @@ class Qwen3TTSConfig(PretrainedConfig):
 
         if talker_config is None:
             talker_config = {}
-            logger.info("talker_config is None. Initializing talker model with default values")
+            if "talker_config" not in _defaults_logged:
+                logger.info("talker_config is None. Initializing talker model with default values")
+                _defaults_logged.add("talker_config")
         if speaker_encoder_config is None:
             speaker_encoder_config = {}
-            logger.info("speaker_encoder_config is None. Initializing talker model with default values")
+            if "speaker_encoder_config" not in _defaults_logged:
+                logger.info("speaker_encoder_config is None. Initializing talker model with default values")
+                _defaults_logged.add("speaker_encoder_config")
 
         self.talker_config = Qwen3TTSTalkerConfig(**talker_config)
         self.speaker_encoder_config = Qwen3TTSSpeakerEncoderConfig(**speaker_encoder_config)
