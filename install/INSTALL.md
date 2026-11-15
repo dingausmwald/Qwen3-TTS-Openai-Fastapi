@@ -242,6 +242,10 @@ chmod +x /opt/qwen3-tts/start_server.sh
 cp dffdeeq/modeling_qwen3_tts_tokenizer_v2.py      /opt/qwen3-tts-streaming/qwen_tts/core/tokenizer_12hz/
 cp dffdeeq/configuration_qwen3_tts_tokenizer_v2.py  /opt/qwen3-tts-streaming/qwen_tts/core/tokenizer_12hz/
 cp dffdeeq/qwen3_tts_model.py                       /opt/qwen3-tts-streaming/qwen_tts/inference/
+# Pflicht: ohne silence_codes_12hz.pt startet TTS nicht (bewusst kein Fallback auf Code 0)
+cp dffdeeq/silence_codes_12hz.pt                    /opt/qwen3-tts-streaming/qwen_tts/core/tokenizer_12hz/
+cp dffdeeq/qwen3_tts_tokenizer.py                   /opt/qwen3-tts-streaming/qwen_tts/inference/
+cp dffdeeq/configuration_qwen3_tts.py               /opt/qwen3-tts-streaming/qwen_tts/core/models/
 ```
 
 ### 9. .pyc-Cache loeschen
@@ -293,6 +297,9 @@ podman cp install/groxaxo/start_server.sh       qwen3-tts:/opt/qwen3-tts/start_s
 # dffdeeq-Dateien
 podman cp install/dffdeeq/modeling_qwen3_tts_tokenizer_v2.py  qwen3-tts:/opt/qwen3-tts-streaming/qwen_tts/core/tokenizer_12hz/modeling_qwen3_tts_tokenizer_v2.py
 podman cp install/dffdeeq/qwen3_tts_model.py                  qwen3-tts:/opt/qwen3-tts-streaming/qwen_tts/inference/qwen3_tts_model.py
+podman cp install/dffdeeq/silence_codes_12hz.pt               qwen3-tts:/opt/qwen3-tts-streaming/qwen_tts/core/tokenizer_12hz/silence_codes_12hz.pt
+podman cp install/dffdeeq/qwen3_tts_tokenizer.py              qwen3-tts:/opt/qwen3-tts-streaming/qwen_tts/inference/qwen3_tts_tokenizer.py
+podman cp install/dffdeeq/configuration_qwen3_tts.py          qwen3-tts:/opt/qwen3-tts-streaming/qwen_tts/core/models/configuration_qwen3_tts.py
 
 # .pyc-Cache loeschen (WICHTIG! Sonst laedt Python alte kompilierte Versionen)
 podman exec qwen3-tts find /opt/qwen3-tts /opt/qwen3-tts-streaming -name "*.pyc" -delete
