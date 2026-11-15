@@ -121,32 +121,29 @@ Ohne diesen Fix: Erster Voice-Clone-Request nach Model-Switch gibt immer 500 Int
 
 ### Streaming-Benchmark (decode_window_frames / emit_every_frames)
 
-Beim Streaming wird pro Emit-Zyklus das gesamte Decode-Fenster neu decoded, aber nur `emit_every_frames` neue Audio-Samples extrahiert. Die **Redundancy Ratio** (= `decode_window / emit_every`) bestimmt den Overhead.
+Beim Streaming wird pro Emit-Zyklus das gesamte Decode-Fenster neu decoded, aber nur `emit_every_frames` neue Audio-Samples extrahiert.
 
-**Optimale Config: `decode_window_frames=72, emit_every_frames=24` (Redundancy ~3x)**
+**Empfohlene Config: `decode_window_frames=72, emit_every_frames=6`** (niedrigste Latenz fuer Pipecat)
 
-Benchmark-Ergebnisse (AMD Radeon 8060S, Strix Halo, mittellange deutsche Saetze):
+Benchmark-Ergebnisse mit `decode_window=72` (AMD Radeon 8060S, Strix Halo, gfx1151, PyTorch 2.11+ROCm 7.11, hipblaslt+TunableOp):
 
-| decode_window | emit_every | Redundancy | TTFB | RTF (med) | Status |
-|---|---|---|---|---|---|
-| 48 | 16 | 3.0x | 5.26s | 1.97x | DEFEKT (CUDA graph bug) |
-| 64 | 21 | 3.0x | 3.52s | 1.85x | DEFEKT (CUDA graph bug) |
-| **72** | **24** | **3.0x** | **1.09s** | **0.57x** | **OPTIMAL** |
-| 80 | 8 | 10.0x | 10.7s | 5.5x | DEFEKT (CUDA graph bug) |
-| 84 | 28 | 3.0x | 1.30s | 0.58x | OK |
-| 84 | 8 | 10.5x | 1.28s | 0.67x | OK (niedriger TTFB, hoeherer RTF) |
-| 150 | 50 | 3.0x | 2.24s | 0.58x | OK |
-| 200 | 67 | 3.0x | 2.97s | 0.57x | OK |
-| 300 | 100 | 3.0x | 4.40s | 0.58x | OK |
-| 300 | 150 | 2.0x | 4.93s | 0.55x | OK (bester RTF, aber TTFB zu hoch) |
-| 300 | 8 | 37.5x | 1.92s | 0.99x | ALT (unnoetige Redundanz) |
+| decode_window | emit_every | TTFB (avg) | RTF (avg) |
+|---|---|---|---|
+| **72** | **6** | **0.28s** | **0.57x** |
+| 72 | 7 | 0.31s | 0.54x |
+| 72 | 8 | 0.34s | 0.53x |
+| 72 | 9 | 0.37s | 0.53x |
+| 72 | 10 | 0.41s | 0.51x |
+| 72 | 11 | 0.44s | 0.51x |
+| 72 | 12 | 0.47s | 0.51x |
 
 **Erkenntnisse:**
 
-1. **Redundancy ~3x ist optimal.** Bei gleicher Ratio sind RTF-Werte fast identisch (0.57-0.58x), unabhaengig von der absoluten Fenstergroesse.
-2. **Kleinere Fenster = niedrigerer TTFB** bei gleichem RTF. 72/24 hat 1.09s TTFB vs. 300/100 mit 4.40s.
-3. **Werte ≤64 und genau 80 sind auf AMD/ROCm defekt.** CUDA Graph Capture schlaegt fehl, Fallback auf unkompilierten Pfad (5-10x langsamer). Grenze liegt zwischen 64 und 72.
-4. **Non-Streaming ist unabhaengig** von diesen Werten. Dort wird `chunked_decode(chunk_size=300, left_context=25)` mit nur 8% Ueberlappung genutzt — Bottleneck ist die autoregressive Generierung, nicht das Decode.
+1. **emit_every=6 gibt den besten TTFB (0.28s)** bei akzeptablem RTF (0.57x). Fuer Pipecat Voice Assistant ist das optimal.
+2. **RTF-Gewinn bei hoeherem emit_every ist gering**: Von ee=6 (0.57x) bis ee=12 (0.51x) nur 0.06x Verbesserung, dafuer +170ms TTFB.
+3. **decode_window=80 ist DEFEKT** auf gfx1151: CUDA Graph Capture schlaegt fehl, RTF 5.5x. Auch 65, 66, 67, 71 sind betroffen. Werte 68-70 und 72+ sind stabil.
+4. **Non-Streaming ist unabhaengig** von diesen Werten. Dort wird `chunked_decode(chunk_size=300, left_context=25)` mit nur 8% Ueberlappung genutzt — Bottleneck ist die autoregressive Generierung, nicht das Decode. Kurze Chunks werden fuer torch.compile links aufgefuellt, und zwar mit Codec-Stille (`silence_codes_12hz.pt`), nicht mit Code 0 — Code 0 hat den Anfang beim Voice Cloning verzerrt (siehe `patches/README.md`). Die Umstellung 6 → 8 vom August war deshalb wirkungslos: die Tests damals liefen alle ohne Streaming.
+5. **TunableOp-Tuning ist kritisch**: Ohne frisch getuntes `tunableop_results0.csv` (via `PYTORCH_TUNABLEOP_TUNING=1`) sinkt die Performance deutlich (RTF 0.76x statt 0.57x bei ee=6).
 
 ## Dateien in diesem Ordner
 

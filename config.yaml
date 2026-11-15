@@ -18,7 +18,7 @@ optimization:
   compile_mode: max-autotune
   streaming:
     decode_window_frames: 72
-    emit_every_frames: 8
+    emit_every_frames: 6
   use_compile: true
   use_cuda_graphs: true
   use_fast_codebook: true
